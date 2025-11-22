@@ -1,23 +1,20 @@
 package com.nipunrautela.solutionshed.security.jwt;
 
-import com.nipunrautela.solutionshed.user.User;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
-import javax.crypto.KeyGenerator;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
-import java.security.NoSuchAlgorithmException;
-import java.util.Base64;
 import java.util.Date;
 import java.util.function.Function;
 
 @Service
 public class JwtService {
-    private final String secretKey;
+    @Value("${security.jwt.secret-key}")
+    private String secretKey;
 
     @Value("${security.jwt.issuer}")
     private String issuer;
@@ -25,21 +22,34 @@ public class JwtService {
     @Value("${security.jwt.expiration-time}")
     private long expirationTime;
 
+    @Value("${security.jwt.refresh-expiration-time:604800000}")
+    private long refreshExpirationTime;
+
     @Autowired
-    public JwtService() throws NoSuchAlgorithmException {
-        SecretKey generatedSecretKey = KeyGenerator.getInstance("HmacSHA256").generateKey();
-        this.secretKey = Base64.getEncoder().encodeToString(generatedSecretKey.getEncoded());
+    public JwtService() {
     }
 
     public String generateJwt(String subject, Claims addtionalClaims) {
+        return buildToken(subject, addtionalClaims, expirationTime);
+    }
+
+    public String generateRefreshToken(String subject) {
+        return buildToken(subject, null, refreshExpirationTime);
+    }
+
+    private String buildToken(String subject, Claims extraClaims, long expiration) {
         return Jwts.builder()
-                .claims(addtionalClaims)
+                .claims(extraClaims)
                 .subject(subject)
                 .issuer(this.issuer)
                 .issuedAt(new Date(System.currentTimeMillis()))
-                .expiration(new Date(System.currentTimeMillis() + this.expirationTime))
+                .expiration(new Date(System.currentTimeMillis() + expiration))
                 .signWith(getSigningKey())
                 .compact();
+    }
+
+    public long getExpirationTime() {
+        return expirationTime;
     }
 
     public JwtData getJwtData(String token) {
@@ -96,7 +106,7 @@ public class JwtService {
     }
 
     private SecretKey getSigningKey() {
-        byte[] secretKeyBytes = Base64.getDecoder().decode(this.secretKey.getBytes());
-        return new SecretKeySpec(secretKeyBytes, 0, secretKeyBytes.length, "HmacSHA256");
+        byte[] secretKeyBytes = this.secretKey.getBytes();
+        return new SecretKeySpec(secretKeyBytes, "HmacSHA256");
     }
 }
