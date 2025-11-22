@@ -1,6 +1,5 @@
 package com.nipunrautela.solutionshed.security.jwt;
 
-import com.nipunrautela.solutionshed.user.User;
 import com.nipunrautela.solutionshed.user.UserService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -8,8 +7,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.lang.NonNull;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.web.authentication.WebAuthenticationDetailsSource;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
@@ -22,7 +24,7 @@ public class JwtFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
     private final HandlerExceptionResolver resolver;
-    private final UserService userService;
+    private final UserDetailsService userService;
 
     @Autowired
     public JwtFilter(
@@ -36,20 +38,28 @@ public class JwtFilter extends OncePerRequestFilter {
     }
 
     @Override
-    protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
-            throws ServletException, IOException {
+    protected void doFilterInternal(
+            @NonNull HttpServletRequest request,
+            @NonNull HttpServletResponse response,
+            @NonNull FilterChain filterChain) throws ServletException, IOException {
         String authHeader = request.getHeader("Authorization");
-        String token = "";
+        System.out.println("JwtFilter: Processing request " + request.getRequestURI());
+
+        if (authHeader == null || !authHeader.startsWith("Bearer ")) {
+            System.out.println("JwtFilter: No token found, skipping...");
+            filterChain.doFilter(request, response);
+            return;
+        }
+
+        String token = authHeader.substring(7);
 
         try {
-            if (authHeader != null && authHeader.startsWith("Bearer")) {
-                token = authHeader.substring(7);
-            }
-
+            System.out.println("JwtFilter: Parsing token...");
             JwtData jwtData = jwtService.getJwtData(token);
 
-            if (jwtData.getSubject() != null && SecurityContextHolder.getContext().getAuthentication() != null) {
-                User user = userService.loadUserByUsername(jwtData.getSubject());
+            if (jwtData.getSubject() != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                System.out.println("JwtFilter: Authenticating user " + jwtData.getSubject());
+                UserDetails user = userService.loadUserByUsername(jwtData.getSubject());
 
                 UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
                         user, null, user.getAuthorities()
@@ -59,6 +69,7 @@ public class JwtFilter extends OncePerRequestFilter {
             }
         }
         catch (Exception e) {
+            System.out.println("JwtFilter: Exception occurred: " + e.getMessage());
             this.resolver.resolveException(request, response, null, e);
         }
 
